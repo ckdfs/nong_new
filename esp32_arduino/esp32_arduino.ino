@@ -2,7 +2,7 @@
  * @Author: ckdfs 2459317008@qq.com
  * @Date: 2024-05-06 20:40:47
  * @LastEditors: ckdfs 2459317008@qq.com
- * @LastEditTime: 2024-05-13 15:04:49
+ * @LastEditTime: 2024-05-13 15:32:42
  * @FilePath: /esp32/esp32.ino
  * @Description: 这是默认设置,请设置`customMade`, 打开koroFileHeader查看配置 进行设置: https://github.com/OBKoro1/koro1FileHeader/wiki/%E9%85%8D%E7%BD%AE
  */
@@ -10,6 +10,7 @@
 #include <PubSubClient.h>
 #include <Wire.h>
 #include <AHT20.h>
+#include <BH1750.h>
 
 // WiFi相关配置信息
 const char *wifi_ssid = "GKDHAJIMI";
@@ -26,6 +27,7 @@ const char *mqtt_topic_sub = "hello"; // 需要订阅的主题
 WiFiClient tcpClient;
 PubSubClient mqttClient;
 AHT20 aht20;
+BH1750 lightMeter;
 
 // MQTT消息回调函数，该函数会在PubSubClient对象的loop方法中被调用
 void mqtt_callback(char *topic, byte *payload, unsigned int length)
@@ -65,6 +67,9 @@ void setup()
     // 初始化AHT20传感器
     Wire.begin(9, 8); // SDA: GPIO9, SCL: GPIO8
     aht20.begin();
+    
+    // 初始化BH1750传感器
+    lightMeter.begin(BH1750::CONTINUOUS_HIGH_RES_MODE);
 }
 
 unsigned long previousConnectMillis = 0; // 毫秒时间记录
@@ -110,7 +115,8 @@ void loop()
         previousReadMillis = currentMillis;
         float temperature = aht20.getTemperature();
         float humidity = aht20.getHumidity();
-        String message = "Temperature: " + String(temperature) + "°C, Humidity: " + String(humidity) + "%";
+        float lux = lightMeter.readLightLevel(); // 读取光照强度
+        String message = "Temperature: " + String(temperature) + "°C, Humidity: " + String(humidity) + "%, Lux: " + String(lux);
         mqttClient.publish(mqtt_topic_pub, message.c_str());
     }
 
