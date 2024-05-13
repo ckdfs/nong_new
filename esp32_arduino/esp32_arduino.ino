@@ -2,12 +2,14 @@
  * @Author: ckdfs 2459317008@qq.com
  * @Date: 2024-05-06 20:40:47
  * @LastEditors: ckdfs 2459317008@qq.com
- * @LastEditTime: 2024-05-06 21:55:17
+ * @LastEditTime: 2024-05-13 15:04:49
  * @FilePath: /esp32/esp32.ino
  * @Description: 这是默认设置,请设置`customMade`, 打开koroFileHeader查看配置 进行设置: https://github.com/OBKoro1/koro1FileHeader/wiki/%E9%85%8D%E7%BD%AE
  */
 #include <WiFi.h>
 #include <PubSubClient.h>
+#include <Wire.h>
+#include <AHT20.h>
 
 // WiFi相关配置信息
 const char *wifi_ssid = "GKDHAJIMI";
@@ -23,6 +25,7 @@ const char *mqtt_topic_sub = "hello"; // 需要订阅的主题
 
 WiFiClient tcpClient;
 PubSubClient mqttClient;
+AHT20 aht20;
 
 // MQTT消息回调函数，该函数会在PubSubClient对象的loop方法中被调用
 void mqtt_callback(char *topic, byte *payload, unsigned int length)
@@ -58,12 +61,18 @@ void setup()
     mqttClient.setServer(mqtt_broker_addr, mqtt_broker_port);
     mqttClient.setBufferSize(mqtt_client_buff_size);
     mqttClient.setCallback(mqtt_callback);
+
+    // 初始化AHT20传感器
+    Wire.begin(9, 8); // SDA: GPIO9, SCL: GPIO8
+    aht20.begin();
 }
 
 unsigned long previousConnectMillis = 0; // 毫秒时间记录
 const long intervalConnectMillis = 5000; // 时间间隔
 unsigned long previousPublishMillis = 0; // 毫秒时间记录
 const long intervalPublishMillis = 3600000; // 时间间隔
+unsigned long previousReadMillis = 0; // 毫秒时间记录
+const long intervalReadMillis = 10000; // 时间间隔
 
 void loop()
 {
@@ -93,6 +102,16 @@ void loop()
             previousPublishMillis = currentMillis;
             mqttClient.publish(mqtt_topic_pub, "naisu 233~~~");
         }
+    }
+
+    // 读取AHT20传感器数据并发送
+    if (currentMillis - previousReadMillis >= intervalReadMillis)
+    {
+        previousReadMillis = currentMillis;
+        float temperature = aht20.getTemperature();
+        float humidity = aht20.getHumidity();
+        String message = "Temperature: " + String(temperature) + "°C, Humidity: " + String(humidity) + "%";
+        mqttClient.publish(mqtt_topic_pub, message.c_str());
     }
 
     // 处理MQTT事务
