@@ -12,6 +12,7 @@
 #include <AHT20.h>
 #include <BH1750.h>
 #include <Adafruit_SGP30.h>
+#include <ArduinoJson.h>
 
 // WiFi相关配置信息
 const char *wifi_ssid = "GKDHAJIMI";
@@ -129,8 +130,22 @@ void loop()
             return;
         }
         uint16_t co2 = sgp.eCO2; // 读取二氧化碳浓度
-        String message = "Temperature: " + String(temperature) + "°C, Humidity: " + String(humidity) + "%, Lux: " + String(lux) + ", CO2: " + String(co2) + "ppm";
-        mqttClient.publish(mqtt_topic_pub, message.c_str());
+        // 创建一个DynamicJsonDocument对象
+        DynamicJsonDocument doc(1024);
+
+        // 设置JSON对象的值
+        doc["Temperature"] = temperature;
+        doc["Humidity"] = humidity;
+        doc["Lux"] = lux;
+        doc["CO2"] = co2;
+
+        // 创建一个字符数组来存储JSON字符串
+        char json[256];
+
+        // 将JSON对象序列化到字符串中
+        serializeJson(doc, json);
+
+        mqttClient.publish(mqtt_topic_pub, json);
     }
 
     // 处理MQTT事务
