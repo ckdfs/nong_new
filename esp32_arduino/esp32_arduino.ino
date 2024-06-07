@@ -2,7 +2,7 @@
  * @Author: ckdfs 2459317008@qq.com
  * @Date: 2024-05-06 20:40:47
  * @LastEditors: ckdfs 2459317008@qq.com
- * @LastEditTime: 2024-05-20 22:40:52
+ * @LastEditTime: 2024-06-08 01:32:38
  * @FilePath: /esp32/esp32.ino
  * @Description: 这是默认设置,请设置`customMade`, 打开koroFileHeader查看配置 进行设置: https://github.com/OBKoro1/koro1FileHeader/wiki/%E9%85%8D%E7%BD%AE
  */
@@ -13,6 +13,13 @@
 #include <BH1750.h>
 #include <Adafruit_SGP30.h>
 #include <ArduinoJson.h>
+#include <Adafruit_GFX.h>
+#include <Adafruit_SSD1306.h>
+
+#define SCREEN_WIDTH 128
+#define SCREEN_HEIGHT 32
+
+Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, -1);
 
 // WiFi相关配置信息
 const char *wifi_ssid = "GKDHAJIMI";
@@ -75,10 +82,20 @@ void setup()
     lightMeter.begin(BH1750::CONTINUOUS_HIGH_RES_MODE);
 
     // 初始化SGP30传感器
-    if (!sgp.begin()){
-        Serial.println("Sensor not found :(");
-        while (1);
+    // if (!sgp.begin()){
+    //     Serial.println("Sensor not found :(");
+    //     while (1);
+    // }
+
+    if(!display.begin(SSD1306_SWITCHCAPVCC, 0x3C)) {
+        Serial.println(F("SSD1306 allocation failed"));
+        for(;;); // 无限循环
     }
+    display.clearDisplay();
+    display.setTextSize(1);
+    display.setTextColor(WHITE);
+    display.setCursor(0,0);
+    display.display();
 }
 
 unsigned long previousConnectMillis = 0; // 毫秒时间记录
@@ -125,11 +142,11 @@ void loop()
         float temperature = aht20.getTemperature();
         float humidity = aht20.getHumidity();
         float lux = lightMeter.readLightLevel(); // 读取光照强度
-        if (! sgp.IAQmeasure()) {
-            Serial.println("Measurement failed");
-            return;
-        }
-        uint16_t co2 = sgp.eCO2; // 读取二氧化碳浓度
+        // if (! sgp.IAQmeasure()) {
+        //     Serial.println("Measurement failed");
+        //     return;
+        // }
+        // uint16_t co2 = sgp.eCO2; // 读取二氧化碳浓度
         // 创建一个DynamicJsonDocument对象
         DynamicJsonDocument doc(1024);
 
@@ -137,7 +154,8 @@ void loop()
         doc["Temperature"] = temperature;
         doc["Humidity"] = humidity;
         doc["Lux"] = lux;
-        doc["CO2"] = co2;
+        // doc["CO2"] = co2;
+        doc["CO2"] = 0;
 
         // 创建一个字符数组来存储JSON字符串
         char json[256];
@@ -146,6 +164,16 @@ void loop()
         serializeJson(doc, json);
 
         mqttClient.publish(mqtt_topic_pub, json);
+
+        // 显示环境信息到OLED
+        display.clearDisplay();
+        display.setCursor(0,0);
+        display.printf("Temp: %.0f'C\n", temperature);
+        display.printf("Hum: %.0f%%\n", humidity);
+        display.printf("Lux: %.0f\n", lux);
+        // display.printf("CO2: %d ppm", co2);
+        display.printf("CO2: %d ppm", 0);
+        display.display();
     }
 
     // 处理MQTT事务
