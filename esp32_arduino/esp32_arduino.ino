@@ -2,7 +2,7 @@
  * @Author: ckdfs 2459317008@qq.com
  * @Date: 2024-05-06 20:40:47
  * @LastEditors: ckdfs 2459317008@qq.com
- * @LastEditTime: 2024-06-08 01:32:38
+ * @LastEditTime: 2024-06-08 04:21:16
  * @FilePath: /esp32/esp32.ino
  * @Description: 这是默认设置,请设置`customMade`, 打开koroFileHeader查看配置 进行设置: https://github.com/OBKoro1/koro1FileHeader/wiki/%E9%85%8D%E7%BD%AE
  */
@@ -15,11 +15,28 @@
 #include <ArduinoJson.h>
 #include <Adafruit_GFX.h>
 #include <Adafruit_SSD1306.h>
+#include <SoftwareSerial.h>
 
 #define SCREEN_WIDTH 128
 #define SCREEN_HEIGHT 32
 
 Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, -1);
+
+// 定义RS485模块连接的TX和RX引脚
+#define RX_PIN  6
+#define TX_PIN  7
+
+// 初始化软件串口
+SoftwareSerial rs485(RX_PIN, TX_PIN);
+
+
+// 定义一个结构体来存储传感器数据
+struct SoilSensorData {
+  float soilHumidity;
+  float soilTemperature;
+  float soilConductivity;
+  float soilPH;
+};
 
 // WiFi相关配置信息
 const char *wifi_ssid = "GKDHAJIMI";
@@ -54,6 +71,7 @@ void mqtt_callback(char *topic, byte *payload, unsigned int length)
 void setup()
 {
     Serial.begin(115200);
+    rs485.begin(4800);
     Serial.println();
 
     // 连接网络
@@ -100,10 +118,9 @@ void setup()
 
 unsigned long previousConnectMillis = 0; // 毫秒时间记录
 const long intervalConnectMillis = 5000; // 时间间隔
-unsigned long previousPublishMillis = 0; // 毫秒时间记录
-const long intervalPublishMillis = 3600000; // 时间间隔
 unsigned long previousReadMillis = 0; // 毫秒时间记录
 const long intervalReadMillis = 10000; // 时间间隔
+unsigned long flag = 1;
 
 void loop()
 {
@@ -125,16 +142,6 @@ void loop()
         }
     }
 
-    // 定期发送消息
-    if (mqttClient.connected())
-    {
-        if (currentMillis - previousPublishMillis >= intervalPublishMillis) // 如果和前次时间大于等于时间间隔
-        {
-            previousPublishMillis = currentMillis;
-            mqttClient.publish(mqtt_topic_pub, "naisu 233~~~");
-        }
-    }
-
     // 读取传感器数据并发送
     if (currentMillis - previousReadMillis >= intervalReadMillis)
     {
@@ -147,15 +154,38 @@ void loop()
         //     return;
         // }
         // uint16_t co2 = sgp.eCO2; // 读取二氧化碳浓度
+
+        // 发送问询帧
+        sendQuery();
+        SoilSensorData data;
+        // 如果收到应答帧
+        while (!rs485.available());
+        // 读取并解析应答帧
+        data = parseResponse();
+            
+        // 使用返回的数据进行输出
+        // Serial.print("soilHumidity: ");
+        // Serial.println(data.soilHumidity);
+        // Serial.print("soilTemperature: ");
+        // Serial.println(data.soilTemperature);
+        // Serial.print("soilConductivity: ");
+        // Serial.println(data.soilConductivity);
+        // Serial.print("soilPH: ");
+        // Serial.println(data.soilPH);
+
         // 创建一个DynamicJsonDocument对象
         DynamicJsonDocument doc(1024);
 
         // 设置JSON对象的值
-        doc["Temperature"] = temperature;
-        doc["Humidity"] = humidity;
-        doc["Lux"] = lux;
-        // doc["CO2"] = co2;
-        doc["CO2"] = 0;
+        doc["temperature"] = temperature;
+        doc["humidity"] = humidity;
+        doc["lightIntensity"] = lux;
+        // doc["co2Concentration"] = co2;
+        doc["co2Concentration"] = 0;
+        doc["soilTemperature"] = data.soilTemperature;
+        doc["soilHumidity"] = data.soilHumidity;
+        doc["soilPH"] = data.soilPH;
+        doc["soilConductivity"] = data.soilConductivity;
 
         // 创建一个字符数组来存储JSON字符串
         char json[256];
@@ -168,14 +198,69 @@ void loop()
         // 显示环境信息到OLED
         display.clearDisplay();
         display.setCursor(0,0);
-        display.printf("Temp: %.0f'C\n", temperature);
-        display.printf("Hum: %.0f%%\n", humidity);
-        display.printf("Lux: %.0f\n", lux);
-        // display.printf("CO2: %d ppm", co2);
-        display.printf("CO2: %d ppm", 0);
+        if (flag) {
+            display.printf("Temp: %.0f'C\n", temperature);
+            display.printf("Hum: %.0f%%\n", humidity);
+            display.printf("Lux: %.0f\n", lux);
+            // display.printf("CO2: %d ppm", co2);
+            display.printf("CO2: %d ppm", 0);
+        }
+        else {
+            display.printf("SoilTemp: %.0f'C\n", data.soilTemperature);
+            display.printf("SoilHum: %.0f%%\n", data.soilHumidity);
+            display.printf("SoilPH: %.0f\n", data.soilPH);
+            display.printf("SoilCond: %d uS/cm", data.soilConductivity);
+        }
         display.display();
+        flag = !flag;
     }
 
     // 处理MQTT事务
     mqttClient.loop();
+}
+
+void sendQuery() {
+  // 构造问询帧
+  byte queryFrame[] = {0x01, 0x03, 0x00, 0x00, 0x00, 0x04, 0x44, 0x09};
+  
+  // 发送问询帧
+  rs485.write(queryFrame, sizeof(queryFrame));
+  
+  // 在串口输出发送的问询帧内容
+  Serial.print("发送问询帧: ");
+  for (int i = 0; i < sizeof(queryFrame); i++) {
+    Serial.print("0x");
+    if (queryFrame[i] < 0x10) Serial.print("0");
+    Serial.print(queryFrame[i], HEX);
+    Serial.print(" ");
+  }
+  Serial.println(); // 换行
+}
+
+SoilSensorData parseResponse() {
+  // 等待直到有足够的数据可读取
+  while (rs485.available() < 13) {
+    // 可以在这里加入超时逻辑以避免无限等待
+  }
+
+  // 读取应答帧
+  byte response[13];
+  for (int i = 0; i < 13; i++) {
+    response[i] = rs485.read();
+  }
+
+  // 解析应答帧
+  int moisture = (response[3] << 8) | response[4];
+  int16_t temperature = (int16_t)((response[5] << 8) | response[6]);
+  int conductivity = (response[7] << 8) | response[8];
+  int pH = (response[9] << 8) | response[10];
+
+  // 计算实际值并存储在结构体中
+  SoilSensorData data;
+  data.soilHumidity = moisture / 10.0;
+  data.soilTemperature = temperature / 10.0;
+  data.soilConductivity = conductivity; // 电导率单位为us/cm
+  data.soilPH = pH / 10.0;
+
+  return data;
 }
