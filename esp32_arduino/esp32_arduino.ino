@@ -2,7 +2,7 @@
  * @Author: ckdfs 2459317008@qq.com
  * @Date: 2024-05-06 20:40:47
  * @LastEditors: ckdfs 2459317008@qq.com
- * @LastEditTime: 2024-06-08 04:21:16
+ * @LastEditTime: 2024-06-14 23:16:48
  * @FilePath: /esp32/esp32.ino
  * @Description: 这是默认设置,请设置`customMade`, 打开koroFileHeader查看配置 进行设置: https://github.com/OBKoro1/koro1FileHeader/wiki/%E9%85%8D%E7%BD%AE
  */
@@ -136,7 +136,6 @@ void loop()
             if (mqttClient.connect(mqtt_client_id.c_str())) // 尝试连接服务器
             // if (mqttClient.connect(mqtt_client_id.c_str(), mqtt_username, mqtt_password))
             {
-                mqttClient.publish(mqtt_topic_pub, "Connected! Hello mqtt!"); // 连接成功后可以发送消息
                 mqttClient.subscribe(mqtt_topic_sub); // 连接成功后可以订阅主题
             }
         }
@@ -158,8 +157,6 @@ void loop()
         // 发送问询帧
         sendQuery();
         SoilSensorData data;
-        // 如果收到应答帧
-        while (!rs485.available());
         // 读取并解析应答帧
         data = parseResponse();
             
@@ -238,29 +235,45 @@ void sendQuery() {
 }
 
 SoilSensorData parseResponse() {
-  // 等待直到有足够的数据可读取
-  while (rs485.available() < 13) {
-    // 可以在这里加入超时逻辑以避免无限等待
+  unsigned long startTime = millis(); // 记录开始等待的时间
+  int retryCount = 0; // 重试计数器
+  const int maxRetries = 3; // 最大重试次数
+
+  while (true) {
+    // 等待直到有足够的数据可读取或超时
+    while (rs485.available() < 13) {
+      if (millis() - startTime > 1000) { // 1秒超时
+        if (retryCount < maxRetries) {
+          Serial.println("应答超时，重新发送问询帧");
+          sendQuery(); // 重新发送问询帧
+          startTime = millis(); // 重置开始等待的时间
+          retryCount++; // 增加重试计数
+        } else {
+          Serial.println("超过最大重试次数，放弃等待");
+          return SoilSensorData(); // 返回空的数据结构体
+        }
+      }
+    }
+
+    // 读取应答帧
+    byte response[13];
+    for (int i = 0; i < 13; i++) {
+      response[i] = rs485.read();
+    }
+
+    // 解析应答帧
+    int moisture = (response[3] << 8) | response[4];
+    int16_t temperature = (int16_t)((response[5] << 8) | response[6]);
+    int conductivity = (response[7] << 8) | response[8];
+    int pH = (response[9] << 8) | response[10];
+
+    // 计算实际值并存储在结构体中
+    SoilSensorData data;
+    data.soilHumidity = moisture / 10.0;
+    data.soilTemperature = temperature / 10.0;
+    data.soilConductivity = conductivity; // 电导率单位为us/cm
+    data.soilPH = pH / 10.0;
+
+    return data;
   }
-
-  // 读取应答帧
-  byte response[13];
-  for (int i = 0; i < 13; i++) {
-    response[i] = rs485.read();
-  }
-
-  // 解析应答帧
-  int moisture = (response[3] << 8) | response[4];
-  int16_t temperature = (int16_t)((response[5] << 8) | response[6]);
-  int conductivity = (response[7] << 8) | response[8];
-  int pH = (response[9] << 8) | response[10];
-
-  // 计算实际值并存储在结构体中
-  SoilSensorData data;
-  data.soilHumidity = moisture / 10.0;
-  data.soilTemperature = temperature / 10.0;
-  data.soilConductivity = conductivity; // 电导率单位为us/cm
-  data.soilPH = pH / 10.0;
-
-  return data;
 }
