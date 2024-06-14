@@ -2,7 +2,7 @@
  * @Author: ckdfs 2459317008@qq.com
  * @Date: 2024-05-06 20:40:47
  * @LastEditors: ckdfs 2459317008@qq.com
- * @LastEditTime: 2024-06-14 23:16:48
+ * @LastEditTime: 2024-06-15 01:53:14
  * @FilePath: /esp32/esp32.ino
  * @Description: 这是默认设置,请设置`customMade`, 打开koroFileHeader查看配置 进行设置: https://github.com/OBKoro1/koro1FileHeader/wiki/%E9%85%8D%E7%BD%AE
  */
@@ -49,6 +49,8 @@ const uint16_t mqtt_client_buff_size = 4096; // 客户端缓存大小（非必�
 String mqtt_client_id = "esp32_ywbveu"; // 客户端ID
 const char *mqtt_topic_pub = "hello"; // 需要发布到的主题
 const char *mqtt_topic_sub = "hello"; // 需要订阅的主题
+const char *mqtt_topic_pub2 = "relay"; // 需要发布到的主题
+const char *mqtt_topic_sub2 = "relay"; // 需要订阅的主题
 
 WiFiClient tcpClient;
 PubSubClient mqttClient;
@@ -57,15 +59,50 @@ BH1750 lightMeter;
 Adafruit_SGP30 sgp;
 
 // MQTT消息回调函数，该函数会在PubSubClient对象的loop方法中被调用
-void mqtt_callback(char *topic, byte *payload, unsigned int length)
-{
-    Serial.printf("Message arrived in topic %s, length %d\n", topic, length);
-    Serial.print("Message:");
-    for (int i = 0; i < length; i++)
-    {
-        Serial.print((char)payload[i]);
+void mqtt_callback(char *topic, byte *payload, unsigned int length) {
+  Serial.printf("Message arrived in topic %s, length %d\n", topic, length);
+  String message;
+  for (int i = 0; i < length; i++) {
+    Serial.print((char)payload[i]);
+    message += (char)payload[i];
+  }
+  Serial.println("\n");
+
+  if (strcmp(topic, "relay") == 0) {
+    StaticJsonDocument<200> doc;
+    deserializeJson(doc, message);
+    String action = doc["action"];
+
+    if (action == "ask") {
+      // 获取并发送当前继电器状态
+      StaticJsonDocument<200> ansDoc;
+      ansDoc["action"] = "ans";
+      ansDoc["0"] = digitalRead(0);
+      ansDoc["1"] = digitalRead(1);
+      ansDoc["3"] = digitalRead(3);
+      ansDoc["10"] = digitalRead(10);
+      String ansMessage;
+      serializeJson(ansDoc, ansMessage);
+      mqttClient.publish(mqtt_topic_pub2, ansMessage.c_str());
+    } else if (action == "ctrl") {
+      // 控制继电器状态
+      digitalWrite(0, doc["0"].as<int>());
+      digitalWrite(1, doc["1"].as<int>());
+      digitalWrite(3, doc["3"].as<int>());
+      digitalWrite(10, doc["10"].as<int>());
+
+      // 发送改变后的继电器状态
+      StaticJsonDocument<200> ansDoc;
+      ansDoc["action"] = "ans";
+      ansDoc["0"] = digitalRead(0);
+      ansDoc["1"] = digitalRead(1);
+      ansDoc["3"] = digitalRead(3);
+      ansDoc["10"] = digitalRead(10);
+      String ansMessage;
+      serializeJson(ansDoc, ansMessage);
+      mqttClient.publish(mqtt_topic_pub2, ansMessage.c_str());
     }
-    Serial.println("\n----------------END----------------");
+  }
 }
 
 void setup()
@@ -105,6 +142,15 @@ void setup()
     //     while (1);
     // }
 
+    pinMode(0, OUTPUT);
+    pinMode(1, OUTPUT);
+    pinMode(3, OUTPUT);
+    pinMode(10, OUTPUT);
+    digitalWrite(0, LOW);
+    digitalWrite(1, LOW);
+    digitalWrite(3, LOW);
+    digitalWrite(10, LOW);
+
     if(!display.begin(SSD1306_SWITCHCAPVCC, 0x3C)) {
         Serial.println(F("SSD1306 allocation failed"));
         for(;;); // 无限循环
@@ -137,6 +183,7 @@ void loop()
             // if (mqttClient.connect(mqtt_client_id.c_str(), mqtt_username, mqtt_password))
             {
                 mqttClient.subscribe(mqtt_topic_sub); // 连接成功后可以订阅主题
+                mqttClient.subscribe(mqtt_topic_sub2);
             }
         }
     }
