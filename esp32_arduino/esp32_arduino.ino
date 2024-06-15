@@ -2,7 +2,7 @@
  * @Author: ckdfs 2459317008@qq.com
  * @Date: 2024-05-06 20:40:47
  * @LastEditors: ckdfs 2459317008@qq.com
- * @LastEditTime: 2024-06-15 01:53:14
+ * @LastEditTime: 2024-06-15 07:25:08
  * @FilePath: /esp32/esp32.ino
  * @Description: 这是默认设置,请设置`customMade`, 打开koroFileHeader查看配置 进行设置: https://github.com/OBKoro1/koro1FileHeader/wiki/%E9%85%8D%E7%BD%AE
  */
@@ -77,27 +77,27 @@ void mqtt_callback(char *topic, byte *payload, unsigned int length) {
       // 获取并发送当前继电器状态
       StaticJsonDocument<200> ansDoc;
       ansDoc["action"] = "ans";
-      ansDoc["0"] = digitalRead(0);
-      ansDoc["1"] = digitalRead(1);
-      ansDoc["3"] = digitalRead(3);
-      ansDoc["10"] = digitalRead(10);
+      ansDoc["relay1"] = digitalRead(0);
+      ansDoc["relay2"] = digitalRead(1);
+      ansDoc["relay3"] = digitalRead(3);
+      ansDoc["relay4"] = digitalRead(10);
       String ansMessage;
       serializeJson(ansDoc, ansMessage);
       mqttClient.publish(mqtt_topic_pub2, ansMessage.c_str());
     } else if (action == "ctrl") {
       // 控制继电器状态
-      digitalWrite(0, doc["0"].as<int>());
-      digitalWrite(1, doc["1"].as<int>());
-      digitalWrite(3, doc["3"].as<int>());
-      digitalWrite(10, doc["10"].as<int>());
+      digitalWrite(0, doc["relay1"].as<int>());
+      digitalWrite(1, doc["relay2"].as<int>());
+      digitalWrite(3, doc["relay3"].as<int>());
+      digitalWrite(10, doc["relay4"].as<int>());
 
       // 发送改变后的继电器状态
       StaticJsonDocument<200> ansDoc;
       ansDoc["action"] = "ans";
-      ansDoc["0"] = digitalRead(0);
-      ansDoc["1"] = digitalRead(1);
-      ansDoc["3"] = digitalRead(3);
-      ansDoc["10"] = digitalRead(10);
+      ansDoc["relay1"] = digitalRead(0);
+      ansDoc["relay2"] = digitalRead(1);
+      ansDoc["relay3"] = digitalRead(3);
+      ansDoc["relay4"] = digitalRead(10);
       String ansMessage;
       serializeJson(ansDoc, ansMessage);
       mqttClient.publish(mqtt_topic_pub2, ansMessage.c_str());
